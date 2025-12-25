@@ -1,0 +1,63 @@
+# MyQuant MCP TODO List
+
+## 已完成 ✅
+- 完善的可审计日志 (5天日志轮换, IP地址追踪)
+- WebUI 搭配 claude-agent-sdk 使用
+- 对话历史持久化 (JSONL)
+- 工具调用折叠显示
+- MCP 工具调用顺序优化
+
+## 进行中 🔄
+- 工具调用折叠功能优化 (turn_end 事件处理)
+
+## 待办事项 📋
+
+### 高优先级 (前期)
+1. **Feature: Add interrupt() support** - 允许用户中断长时间运行的任务
+   - 添加中断按钮到 UI
+   - 实现 `client.interrupt()` 调用
+   - 处理中断后的状态恢复
+
+2. **Feature: Store conversations in SQLite** - 更好的数据持久化
+   - 设计数据库 schema (conversations, messages 表)
+   - 实现 ConversationStorage 类
+   - 迁移现有 JSONL 数据到 SQLite
+
+3. **Feature: Auto-generate conversation titles** - 自动生成有意义的对话标题
+   - 从首条用户消息提取关键词
+   - 或调用 Claude 生成简短标题
+   - 在创建会话时自动设置
+
+4. **Feature: Add retry/regenerate buttons** - 像 ChatGPT 一样的重试功能
+   - 在每个助手消息块下方添加操作按钮
+   - 实现 regenerate (重新生成最后一条回复)
+   - 实现 edit message (编辑消息后重新生成)
+
+### 中优先级 (中期)
+5. **Refactor: Split agent_page.py into modules** - 代码重构，拆分模块
+   - `models/` - 数据模型 (Conversation, Message)
+   - `storage/` - 存储层 (SQLiteStorage, JSONLStorage)
+   - `services/` - 业务逻辑 (ConversationService, ClaudeService)
+   - `api/` - API 路由处理
+   - `utils/` - 工具函数 (logging, formatting)
+
+6. **Refactor: Add better logging and debugging** - 改进日志和调试工具
+   - 统一日志格式
+   - 添加请求追踪 ID
+   - 性能监控 (响应时间、token 使用)
+   - Debug 模式开关
+
+### 低优先级 (后期)
+7. **Feature: Add Custom Agents (Skills)** - 自定义代理支持
+   - 定义 analyst, trader, researcher 等代理
+   - 配置各自的专业提示词和工具
+   - UI 中添加代理选择器
+
+8. 高性能缓存机制
+9. 清理无用代码和依赖
+
+## 技术债务 📝
+- 前端代码内嵌在 Python 文件中，考虑分离
+- 添加单元测试
+- 添加 API 文档 (OpenAPI/Swagger)
+- 考虑添加 WebSocket 替代 SSE
