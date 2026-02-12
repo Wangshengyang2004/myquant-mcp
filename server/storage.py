@@ -13,7 +13,7 @@ from datetime import datetime
 from contextlib import asynccontextmanager
 import threading
 
-from log_config import logger
+from server.log_config import logger
 
 
 class SQLiteStorage:
@@ -68,7 +68,7 @@ class SQLiteStorage:
             ON conversations(updated_at DESC)
         """)
         conn.commit()
-        logger.info(f"SQLite database initialized at {self.db_path}")
+        logger.info(f"SQLite database loaded from {self.db_path}")
 
     async def load(self):
         """Load is no-op for SQLite (data is loaded on query)."""
@@ -190,25 +190,102 @@ class SQLiteStorage:
 
     async def migrate_from_jsonl(self, jsonl_path: Path) -> int:
         """Migrate conversations from JSONL file to SQLite."""
+        import uuid
+
         if not jsonl_path.exists():
             logger.info(f"No JSONL file found at {jsonl_path}, skipping migration")
             return 0
+
         count = 0
+        skipped = 0
+        errors = []
+
         try:
             with open(jsonl_path, 'r', encoding='utf-8') as f:
-                for line in f:
+                for line_num, line in enumerate(f, 1):
                     line = line.strip()
-                    if line:
+                    if not line:
+                        continue
+
+                    try:
                         conv = json.loads(line)
+
+                        # Validate conversation structure
+                        if not isinstance(conv, dict):
+                            errors.append(f"Line {line_num}: Not a dict, skipping")
+                            skipped += 1
+                            continue
+
+                        # Generate or validate conversation ID
+                        if 'id' not in conv or not conv['id']:
+                            conv['id'] = str(uuid.uuid4())
+
+                        # Ensure messages list exists and is valid
+                        messages = conv.get('messages', [])
+                        if not isinstance(messages, list):
+                            messages = []
+
+                        # Validate and fix each message
+                        valid_messages = []
+                        for i, msg in enumerate(messages):
+                            if not isinstance(msg, dict):
+                                continue
+                            # Generate ID if missing
+                            if 'id' not in msg or not msg['id']:
+                                msg['id'] = f"{conv['id']}-msg-{i}"
+                            # Ensure content exists (can be empty string but must be present)
+                            if 'content' not in msg:
+                                msg['content'] = ""
+                            # Ensure role exists
+                            if 'role' not in msg:
+                                msg['role'] = "user"
+                            # Ensure timestamp exists
+                            if 'timestamp' not in msg:
+                                msg['timestamp'] = int(datetime.now().timestamp())
+                            valid_messages.append(msg)
+
+                        conv['messages'] = valid_messages
+
+                        # Validate required fields exist before calling set()
+                        if 'id' not in conv:
+                            errors.append(f"Line {line_num}: Missing conversation ID after processing")
+                            skipped += 1
+                            continue
+
                         self.set(conv)
                         count += 1
+
+                    except json.JSONDecodeError as e:
+                        errors.append(f"Line {line_num}: Invalid JSON - {e}")
+                        skipped += 1
+                        continue
+                    except Exception as e:
+                        errors.append(f"Line {line_num}: {e}")
+                        skipped += 1
+                        continue
+
+            # Log results
             logger.info(f"Migrated {count} conversations from JSONL to SQLite")
-            # Backup old JSONL file
-            backup_path = jsonl_path.with_suffix('.jsonl.bak')
-            jsonl_path.rename(backup_path)
-            logger.info(f"Backed up old JSONL to {backup_path}")
+            if skipped > 0:
+                logger.warning(f"Skipped {skipped} conversations during migration")
+            if errors:
+                # Log first few errors
+                for err in errors[:5]:
+                    logger.warning(f"Migration issue: {err}")
+                if len(errors) > 5:
+                    logger.warning(f"... and {len(errors) - 5} more issues")
+
+            # Backup old JSONL file only if successful
+            if count > 0:
+                backup_path = jsonl_path.with_suffix('.jsonl.bak')
+                jsonl_path.rename(backup_path)
+                logger.info(f"Backed up old JSONL to {backup_path}")
+
         except Exception as e:
             logger.error(f"Failed to migrate from JSONL: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+
         return count
 
 

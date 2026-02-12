@@ -4,24 +4,23 @@ Client management service.
 Manages ConversationClient instances with persistent connections to Claude Agent SDK.
 """
 import asyncio
+import os
 import time
 from typing import AsyncGenerator, Dict, Optional, TYPE_CHECKING
-from pathlib import Path
 
-from log_config import logger
-from storage import SQLiteStorage, conversation_storage, CONVERSATIONS_DIR
+from server.log_config import logger
+from server.storage import SQLiteStorage, conversation_storage, CONVERSATIONS_DIR
+from server.config import CLAUDE_AGENT_SYSTEM_PROMPT, CHROME_DEVTOOLS_MCP_CONFIG
 
 # Type checking imports
 if TYPE_CHECKING:
     from claude_agent_sdk import ClaudeSDKClient
 
-# Import tools and decorators
-try:
-    from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient, create_sdk_mcp_server, tool
-    CLAUDE_SDK_AVAILABLE = True
-except ImportError as e:
-    CLAUDE_SDK_AVAILABLE = False
-    logger.warning(f"Claude Agent SDK not available: {e.__class__.__name__}: {e}")
+# Import tools and decorators (Claude Agent SDK required)
+from claude_agent_sdk import (
+    ClaudeAgentOptions, ClaudeSDKClient, create_sdk_mcp_server, tool,
+    AssistantMessage, TextBlock, ToolUseBlock, ResultMessage
+)
 
 # Import tools
 from services.tools import _ALL_SDK_TOOLS
@@ -39,6 +38,7 @@ class ConversationClient:
         self.message_queue = asyncio.Queue()
         self.receive_task = None
         self.is_running = False
+        self.total_cost_usd: float = 0.0
 
     async def start_receiving(self):
         """Start the background task to continuously receive messages"""
@@ -48,9 +48,13 @@ class ConversationClient:
     async def _receive_loop(self):
         """Continuously receive messages and queue them"""
         try:
-            async for message in self.client.receive_messages():
+            async for message in self.client.receive_response():
                 if not self.is_running:
                     break
+                # Track cost from ResultMessage
+                if isinstance(message, ResultMessage):
+                    self.total_cost_usd = message.total_cost_usd or 0.0
+                    logger.info(f"Cost: ${self.total_cost_usd:.4f}")
                 await self.message_queue.put(message)
         except Exception as e:
             logger.error(f"Error in receive loop: {e}")
@@ -76,6 +80,7 @@ class ConversationClient:
         while True:
             try:
                 msg = await asyncio.wait_for(self.message_queue.get(), timeout=60.0)
+                # Yield SDK message objects directly - let routes.py handle type checks
                 yield msg
             except asyncio.TimeoutError:
                 # No messages for 60 seconds - send keepalive or check status
@@ -121,7 +126,7 @@ class ClientManager:
             conv_id = conv['id']
             if conv_id not in self.sessions:
                 self.sessions[conv_id] = conv
-        logger.info(f"Restored {len(self.sessions)} conversations from storage")
+        logger.debug(f"Restored {len(self.sessions)} conversations from storage")
 
     async def save_to_storage(self):
         """Save conversations to SQLite storage"""
@@ -132,9 +137,6 @@ class ClientManager:
 
     async def get_or_create_client(self, conversation_id: Optional[str]) -> tuple[str, ConversationClient, bool]:
         """Get existing client or create new one. Returns (conv_id, client_wrapper, is_new)"""
-        if not CLAUDE_SDK_AVAILABLE:
-            raise RuntimeError("Claude Agent SDK is not available")
-
         async with self._lock:
             # If conversation exists, return it
             if conversation_id and conversation_id in self.conversations:
@@ -150,6 +152,8 @@ class ClientManager:
 
             # Create new client
             logger.info("Creating new ClaudeSDKClient")
+            logger.info(f"ANTHROPIC_BASE_URL: {os.getenv('ANTHROPIC_BASE_URL', 'NOT SET')}")
+            logger.info(f"ANTHROPIC_API_KEY: {'***' if os.getenv('ANTHROPIC_API_KEY') else 'NOT SET'}")
 
             # Create MCP server
             myquant_server = create_sdk_mcp_server(
@@ -161,42 +165,12 @@ class ClientManager:
             options = ClaudeAgentOptions(
                 mcp_servers={
                     "myquant": myquant_server,
-                    "chrome-devtools": {
-                        "type": "stdio",
-                        "command": "npx",
-                        "args": ["-y", "chrome-devtools-mcp@latest"]
-                    }
+                    "chrome-devtools": CHROME_DEVTOOLS_MCP_CONFIG
                 },
-                system_prompt="""You are a helpful quantitative trading and financial analysis assistant with access to:
-
-**MyQuant Tools** (Chinese Stock Market):
-- history/history_n: Historical OHLCV data
-- current: Real-time market snapshot
-- get_symbols: List stocks/funds/indices
-- stk_get_daily_valuation: PE/PB/PS valuation metrics
-  - fields: 'pe_ttm,pe_mrq,pe_lyr,pb_lyr,pb_mrq,ps_ttm,ps_lyr'
-- stk_get_daily_basic: Price, turnover, shares data
-  - fields: 'tclose,turnrate,ttl_shr,circ_shr'
-- stk_get_fundamentals_balance: Balance sheet (assets, liabilities, equity)
-  - fields: 'mny_cptl,ttl_ast,ttl_liab,ttl_eqy_pcom,ttl_eqy'
-- stk_get_fundamentals_income: Income statement (revenue, profit)
-  - fields: 'ttl_inc_oper,inc_oper,net_prof,net_prof_pcom'
-- stk_get_money_flow: Money flow analysis
-- get_positions: Current trading positions
-- get_cash: Account cash balance
-
-**IMPORTANT - Field Names**: Use exact field names as shown above. Common errors:
-- Use 'pb_lyr' NOT 'pb'
-- Use 'tclose,turnrate,ttl_shr,circ_shr' NOT 'turnover_ratio,volume_ratio,total_share,float_share,total_mv,circ_mv'
-- Use 'ttl_ast' NOT 'total_assets'
-- Use 'ttl_inc_oper,net_prof' NOT 'total_revenue'
-
-**Chrome DevTools** (Browser Automation):
-- Navigate to websites, take screenshots, extract content
-
-You can help users analyze stocks, get market data, evaluate fundamentals, and scrape financial websites.""",
+                system_prompt=CLAUDE_AGENT_SYSTEM_PROMPT,
                 permission_mode="bypassPermissions",
                 max_turns=50,
+                include_partial_messages=True,
             )
 
             raw_client = ClaudeSDKClient(options=options)

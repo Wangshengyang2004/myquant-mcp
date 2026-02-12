@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "myquant": {
+      "type": "streamable-http",
+      "url": "http://localhost:8001/mcp/",
+      "disabled": false,
+      "alwaysAllow": []
+    }
+  }
+}

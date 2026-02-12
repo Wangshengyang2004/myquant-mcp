@@ -9,6 +9,7 @@ Features:
 - Request context tracking via context variable
 - Performance monitoring decorator
 - Debug mode toggle
+- Console logging for tool calls
 """
 import logging
 import logging.handlers
@@ -16,6 +17,7 @@ import json
 import time
 import functools
 import os
+import sys
 from pathlib import Path
 from datetime import datetime
 from typing import Optional, Dict, Any, Callable
@@ -32,6 +34,50 @@ LOG_DIR.mkdir(exist_ok=True)
 ACCESS_LOG_FILE = LOG_DIR / "access_streamable_http.log"
 AUDIT_LOG_FILE = LOG_DIR / "audit_streamable_http.jsonl"
 ERROR_LOG_FILE = LOG_DIR / "error_streamable_http.log"
+
+
+def suppress_mcp_sdk_logging():
+    """Suppress verbose logging from MCP SDK internals.
+    
+    This silences messages like:
+    - "Terminating session: None"
+    - "Processing request of type CallToolRequest"
+    """
+    # Suppress MCP server internal logging
+    mcp_loggers = [
+        "mcp.server",
+        "mcp.server.lowlevel", 
+        "mcp.server.lowlevel.server",
+        "mcp.server.session",
+        "mcp.server.request_handlers",
+    ]
+    for logger_name in mcp_loggers:
+        logger = logging.getLogger(logger_name)
+        logger.setLevel(logging.WARNING)  # Only show warnings and errors
+        logger.propagate = False
+
+
+def setup_console_logging():
+    """Setup console logging for the application.
+    
+    Shows tool calls and important messages to stdout.
+    """
+    # Main app logger for console
+    console_logger = logging.getLogger("console")
+    console_logger.setLevel(logging.INFO)
+    console_logger.propagate = False
+    
+    if not console_logger.handlers:
+        handler = logging.StreamHandler(sys.stdout)
+        handler.setLevel(logging.INFO)
+        # Format: timestamp | LEVEL | message
+        handler.setFormatter(logging.Formatter(
+            '%(asctime)s | %(levelname)-8s | %(message)s',
+            datefmt='%Y-%m-%d %H:%M:%S'
+        ))
+        console_logger.addHandler(handler)
+    
+    return console_logger
 
 # --- Context Variable for Request Info ---
 class RequestContext:
@@ -202,6 +248,10 @@ def create_error_logger() -> logging.Logger:
 access_logger = create_access_logger()
 audit_logger = AuditLogger()
 error_logger = create_error_logger()
+console_logger = setup_console_logging()
+
+# Suppress MCP SDK verbose logging at module load time
+suppress_mcp_sdk_logging()
 
 # General application logger
 logger = logging.getLogger("app")

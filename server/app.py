@@ -7,7 +7,7 @@ import logging
 from starlette.applications import Starlette
 from starlette.routing import Mount, Route
 from starlette.middleware.cors import CORSMiddleware
-from log_config import LoggingMiddleware
+from server.log_config import LoggingMiddleware
 
 from server.mcp_server import get_mcp_app, mcp
 from server.api import (
@@ -24,7 +24,7 @@ logger = logging.getLogger("server")
 
 # Try to import agent page routes (optional)
 try:
-    from agent_page import ROUTES as AGENT_ROUTES
+    from server.agent_page import ROUTES as AGENT_ROUTES
     AGENT_PAGE_ENABLED = True
 except ImportError:
     AGENT_PAGE_ENABLED = False
@@ -37,7 +37,7 @@ async def lifespan(app: Starlette):
     # Agent page startup - load conversations from storage
     if AGENT_PAGE_ENABLED:
         try:
-            from agent_page import startup as agent_startup
+            from server.agent_page import startup as agent_startup
             await agent_startup()
         except Exception as e:
             logger.error(f"Agent page startup failed: {e}")

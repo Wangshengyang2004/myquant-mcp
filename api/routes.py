@@ -11,22 +11,16 @@ from typing import AsyncGenerator
 from starlette.requests import Request
 from starlette.responses import HTMLResponse, StreamingResponse, JSONResponse
 
-from log_config import logger
-from storage import conversation_storage
+from server.log_config import logger
+from server.storage import conversation_storage
 from services.client import client_manager
 from utils.title import generate_conversation_title
 
-# Import SDK message types
-try:
-    from claude_agent_sdk import (
-        SystemMessage, UserMessage, AssistantMessage, ResultMessage,
-        TextBlock, ToolUseBlock
-    )
-    CLAUDE_SDK_AVAILABLE = True
-except ImportError as e:
-    CLAUDE_SDK_AVAILABLE = False
-    logger.warning(f"Claude Agent SDK not available: {e.__class__.__name__}: {e}")
-    # traceback.print_exc() # Uncomment for development debugging
+# Import SDK message types (Claude Agent SDK required)
+from claude_agent_sdk import (
+    SystemMessage, UserMessage, AssistantMessage, ResultMessage,
+    TextBlock, ToolUseBlock
+)
 
 # HTML cache
 _AGENT_HTML_CACHE = None
@@ -39,7 +33,7 @@ def load_agent_html() -> str:
         try:
             from pathlib import Path
             BASE_DIR = Path(__file__).resolve().parent.parent
-            _AGENT_HTML_CACHE = (BASE_DIR / "agent.html").read_text(encoding="utf-8")
+            _AGENT_HTML_CACHE = (BASE_DIR / "server" / "agent.html").read_text(encoding="utf-8")
         except FileNotFoundError:
             _AGENT_HTML_CACHE = "<h1>MyQuant Agent</h1><p>agent.html not found.</p>"
     return _AGENT_HTML_CACHE
@@ -102,9 +96,6 @@ async def agent_api_interrupt(request: Request) -> JSONResponse:
 
 async def agent_chat(request: Request) -> StreamingResponse | JSONResponse:
     """Handle chat requests with persistent client"""
-
-    if not CLAUDE_SDK_AVAILABLE:
-        return JSONResponse({"error": "Claude Agent SDK not installed"}, status_code=503)
 
     api_key = os.getenv("ANTHROPIC_API_KEY")
     if not api_key:

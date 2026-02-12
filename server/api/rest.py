@@ -9,14 +9,42 @@ from server.tools import _tool_functions
 from server.api.direct_call import _build_registered_tools, _build_tool_schema
 
 
+# Blocked tools for HTTP API (trading and account operations)
+# These tools are blocked at the HTTP API level for security reasons.
+# Only MCP endpoint has access to these tools.
+BLOCKED_TOOLS_HTTP = {
+    # Trading tools
+    "order_volume",
+    "order_value",
+    "order_target_volume",
+    "order_cancel",
+    "order_cancel_all",
+    "order_close_all",
+    "order_percent",
+    "order_target_value",
+    "order_target_percent",
+    "order_batch",
+    "get_unfinished_orders",
+    # Account tools
+    "get_positions",
+    "get_orders",
+    "get_cash",
+    "get_execution_reports",
+}
+
+
 async def rest_api_tools_list(request: Request) -> JSONResponse:
     """RESTful API: Get all available tools.
 
     GET /api/v1/tools
     Returns: {"success": true, "count": N, "tools": [...]}
+
+    Note: Trading and account tools are NOT listed (blocked for HTTP API).
     """
     try:
         tools = _build_registered_tools()
+        # Filter out blocked tools
+        tools = [t for t in tools if t["name"] not in BLOCKED_TOOLS_HTTP]
         return JSONResponse({
             "success": True,
             "count": len(tools),
@@ -35,6 +63,13 @@ async def rest_api_tool_info(request: Request) -> JSONResponse:
     tool_name = request.path_params.get("tool_name")
     if not tool_name:
         return JSONResponse({"success": False, "error": "Tool name is required"}, status_code=400)
+
+    # Check if tool is blocked
+    if tool_name in BLOCKED_TOOLS_HTTP:
+        return JSONResponse(
+            {"success": False, "error": f"Tool '{tool_name}' is not available via HTTP API"},
+            status_code=403
+        )
 
     if tool_name not in _tool_functions:
         return JSONResponse({"success": False, "error": f"Tool '{tool_name}' not found"}, status_code=404)
@@ -59,6 +94,13 @@ async def rest_api_tool_call(request: Request) -> JSONResponse:
     tool_name = request.path_params.get("tool_name")
     if not tool_name:
         return JSONResponse({"success": False, "error": "Tool name is required"}, status_code=400)
+
+    # Check if tool is blocked
+    if tool_name in BLOCKED_TOOLS_HTTP:
+        return JSONResponse(
+            {"success": False, "error": f"Tool '{tool_name}' is not available via HTTP API"},
+            status_code=403
+        )
 
     if tool_name not in _tool_functions:
         return JSONResponse({"success": False, "error": f"Tool '{tool_name}' not found"}, status_code=404)
@@ -91,6 +133,13 @@ async def rest_api_tool_call_get(request: Request) -> JSONResponse:
     tool_name = request.path_params.get("tool_name")
     if not tool_name:
         return JSONResponse({"success": False, "error": "Tool name is required"}, status_code=400)
+
+    # Check if tool is blocked
+    if tool_name in BLOCKED_TOOLS_HTTP:
+        return JSONResponse(
+            {"success": False, "error": f"Tool '{tool_name}' is not available via HTTP API"},
+            status_code=403
+        )
 
     if tool_name not in _tool_functions:
         return JSONResponse({"success": False, "error": f"Tool '{tool_name}' not found"}, status_code=404)
