@@ -55,7 +55,7 @@ GM_SERV_ADDR=192.168.1.10:7001
 ## 先启动服务
 
 ```bash
-git clone <你的 GitHub 仓库地址>
+git clone https://github.com/Wangshengyang2004/myquant-mcp.git
 cd myquant-mcp
 python -m venv .venv
 . .venv/bin/activate
