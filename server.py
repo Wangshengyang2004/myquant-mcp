@@ -20,7 +20,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import uvicorn
-from gm.api import set_token
+from gm.api import set_token, set_serv_addr
 from dotenv import load_dotenv
 
 # Import log_config first to initialize logging suppression
@@ -29,7 +29,7 @@ from server.app import create_app
 
 
 def init_gm_token():
-    """Initialize GM API token"""
+    """Initialize GM API access (token + optional service address)"""
     load_dotenv(override=True)
     token = os.getenv("GM_TOKEN", "")
     if token:
@@ -37,6 +37,16 @@ def init_gm_token():
         console_logger.info("GM API token initialized successfully")
     else:
         console_logger.warning("GM_TOKEN not found in environment")
+
+    serv_addr = os.getenv("GM_SERV_ADDR", "").strip()
+    if serv_addr:
+        try:
+            set_serv_addr(serv_addr)
+            console_logger.info(f"GM service address set to {serv_addr}")
+        except Exception as exc:
+            console_logger.error(f"Failed to set GM service address '{serv_addr}': {exc}")
+    else:
+        console_logger.info("GM_SERV_ADDR not set, defaulting to local GM terminal")
 
 
 def configure_uvicorn_logging():

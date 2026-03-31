@@ -96,7 +96,8 @@ async def direct_call_endpoint(request: Request) -> JSONResponse:
         if method == "tools/call":
             params = body.get("params", {}) or {}
             tool_name = params.get("name")
-            arguments = params.get("params", {}).get("arguments", {}) or {}
+            # Support both MCP standard (params.arguments) and nested format (params.params.arguments)
+            arguments = params.get("arguments", {}) or params.get("params", {}).get("arguments", {}) or {}
 
             if tool_name not in _tool_functions:
                 return JSONResponse({

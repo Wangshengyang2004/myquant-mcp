@@ -1,3 +1,9 @@
+import os
+import pytest
+
+if os.getenv("RUN_INTEGRATION_TESTS") != "1":
+    pytest.skip("Integration test requires a live GM/MyQuant environment", allow_module_level=True)
+
 from common import init_gm, safe_run
 from gm.api import (
     stk_get_fundamentals_balance_pt, 
@@ -16,4 +22,3 @@ def test_quick():
 
 if __name__ == "__main__":
     test_quick()
-

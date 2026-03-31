@@ -199,7 +199,7 @@ async def stk_get_daily_valuation(symbols: str, fields: str, trade_date: Optiona
 
     参数:
     - symbols: 股票代码字符串，或逗号分隔多个代码
-    - fields: 可用字段（逗号分隔）:
+    - fields: 全部可用字段（逗号分隔，仅支持以下字段）:
         市盈率: pe_ttm(TTM), pe_lyr(最新年报), pe_mrq(最新报告期), pe_1q(一季*4), pe_2q(中报*2), pe_3q(三季*4/3)
         扣非市盈率: pe_ttm_cut, pe_lyr_cut, pe_mrq_cut, pe_1q_cut, pe_2q_cut, pe_3q_cut
         市净率: pb_lyr(最新年报), pb_mrq(最新报告期), pb_lyr_1(剔除其他权益), pb_mrq_1
@@ -226,7 +226,7 @@ async def stk_get_daily_basic(symbols: str, fields: str, trade_date: Optional[st
 
     参数:
     - symbols: 股票代码，多个用英文逗号分隔，如 'SHSE.600000,SZSE.000001'
-    - fields: 可用字段（逗号分隔）:
+    - fields: 全部可用字段（逗号分隔，仅支持以下字段）:
         tclose(收盘价), turnrate(换手率%), ttl_shr(总股本), circ_shr(流通股本),
         ttl_shr_unl(无限售流通股), ttl_shr_ltd(有限售股本), a_shr_unl(A股流通股), h_shr_unl(H股流通股)
     - trade_date: 交易日 'YYYY-MM-DD'，None 表示最新交易日

@@ -7,10 +7,10 @@ This client provides access to market and fundamental data tools only.
 Trading and account operations are NOT exposed for security reasons.
 
 Usage:
-    python client.py --help
-    python client.py --list-tools
-    python client.py history --symbol SHSE.600000 --frequency 1d --start-time 2024-01-01 --end-time 2024-12-31
-    python client.py stk_get_fundamentals_balance --symbols SHSE.600000 --fields ttl_ast,ttl_liab --download-dir ./data
+    python skills/myquant-mcp/scripts/client.py --help
+    python skills/myquant-mcp/scripts/client.py --list-tools
+    python skills/myquant-mcp/scripts/client.py history --symbol SHSE.600000 --frequency 1d --start-time 2024-01-01 --end-time 2024-12-31
+    python skills/myquant-mcp/scripts/client.py stk_get_fundamentals_balance --symbols SHSE.600000 --fields ttl_ast,ttl_liab --download-dir ./data
 
 Requirements:
     - requests (pip install requests)
@@ -34,7 +34,7 @@ except ImportError:
 # Configuration
 # =============================================================================
 
-# TODO: Replace with your server URL
+# Default local server URL. Override with --url when targeting another deployment.
 DEFAULT_BASE_URL = "http://localhost:8001"
 API_VERSION = "v1"
 TOOLS_ENDPOINT = f"/api/{API_VERSION}/tools"
@@ -673,7 +673,7 @@ def list_all_tools():
             print(f"  {name:<35} - {desc}")
 
     print(f"\nTotal: {len(DATA_TOOLS)} data tools available")
-    print("\nUse: python client.py <tool_name> --help for detailed usage")
+    print("\nUse: python skills/myquant-mcp/scripts/client.py <tool_name> --help for detailed usage")
     print()
 
 
@@ -685,22 +685,22 @@ def main():
         epilog="""
 Examples:
   List all tools:
-    python client.py --list-tools
+    python skills/myquant-mcp/scripts/client.py --list-tools
 
   Get tool info:
-    python client.py --info history
+    python skills/myquant-mcp/scripts/client.py --info history
 
   Call a tool:
-    python client.py history --symbol SHSE.600000 --frequency 1d --start-time 2024-01-01 --end-time 2024-12-31
+    python skills/myquant-mcp/scripts/client.py history --symbol SHSE.600000 --frequency 1d --start-time 2024-01-01 --end-time 2024-12-31
 
   Save result to file:
-    python client.py history --symbol SHSE.600000 --frequency 1d --start-time 2024-01-01 --end-time 2024-12-31 --download-dir ./data
+    python skills/myquant-mcp/scripts/client.py history --symbol SHSE.600000 --frequency 1d --start-time 2024-01-01 --end-time 2024-12-31 --download-dir ./data
 
   Use custom server:
-    python client.py --url http://your-server:8001 history --symbol SHSE.600000 ...
+    python skills/myquant-mcp/scripts/client.py --url http://your-server:8001 history --symbol SHSE.600000 ...
 
   Use GET method:
-    python client.py --get history --symbol SHSE.600000 --frequency 1d --start-time 2024-01-01 --end-time 2024-12-31
+    python skills/myquant-mcp/scripts/client.py --get history --symbol SHSE.600000 --frequency 1d --start-time 2024-01-01 --end-time 2024-12-31
         """,
     )
 

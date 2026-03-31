@@ -1,0 +1,18 @@
+version: "3.9"
+services:
+  myquant-mcp:
+    build: .
+    container_name: myquant-mcp
+    env_file:
+      - .env
+    environment:
+      - GM_TOKEN=
+      - MCP_AUTH_TOKEN=
+      - GM_SERV_ADDR=
+      - REQUIRE_AUTH_TOKEN=
+      - TRADING_ENABLED=
+    ports:
+      - "8001:8001"
+    restart: unless-stopped
+    volumes:
+      - ./logs:/app/logs

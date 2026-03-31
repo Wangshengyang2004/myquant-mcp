@@ -69,6 +69,7 @@ async def history_n(symbol: str, frequency: str, count: int) -> str:
     return format_dataframe_response(res)
 
 
+@tool_registry("current")
 @mcp.tool()
 @audit_wrapper
 async def current(symbols: str) -> str:
@@ -86,6 +87,7 @@ async def current(symbols: str) -> str:
     return format_list_response(res) if isinstance(res, list) else format_dataframe_response(res)
 
 
+@tool_registry("current_price")
 @mcp.tool()
 @audit_wrapper
 async def current_price(symbols: str) -> str:
@@ -104,6 +106,7 @@ async def current_price(symbols: str) -> str:
     return json.dumps(res, ensure_ascii=False, default=str)
 
 
+@tool_registry("last_tick")
 @mcp.tool()
 @audit_wrapper
 async def last_tick(symbols: str, fields: str = "", include_call_auction: bool = False) -> str:
@@ -124,6 +127,7 @@ async def last_tick(symbols: str, fields: str = "", include_call_auction: bool =
     return json.dumps(res, ensure_ascii=False, default=str)
 
 
+@tool_registry("get_symbols")
 @mcp.tool()
 @audit_wrapper
 async def get_symbols(sec_type1: int, sec_type2: Optional[int] = None, exchanges: Optional[str] = None, symbols: Optional[str] = None, skip_suspended: bool = True, skip_st: bool = True, trade_date: Optional[str] = None) -> str:
@@ -157,6 +161,7 @@ async def get_symbols(sec_type1: int, sec_type2: Optional[int] = None, exchanges
     return format_dataframe_response(res)
 
 
+@tool_registry("get_symbol_infos")
 @mcp.tool()
 @audit_wrapper
 async def get_symbol_infos(sec_type1: int, sec_type2: Optional[int] = None, exchanges: Optional[str] = None, symbols: Optional[str] = None) -> str:
@@ -178,6 +183,7 @@ async def get_symbol_infos(sec_type1: int, sec_type2: Optional[int] = None, exch
     return format_dataframe_response(res)
 
 
+@tool_registry("get_trading_dates_by_year")
 @mcp.tool()
 @audit_wrapper
 async def get_trading_dates_by_year(exchange: str, start_year: int, end_year: int) -> str:
@@ -198,6 +204,7 @@ async def get_trading_dates_by_year(exchange: str, start_year: int, end_year: in
     return format_dataframe_response(res)
 
 
+@tool_registry("get_history_symbol")
 @mcp.tool()
 @audit_wrapper
 async def get_history_symbol(symbol: str, start_date: Optional[str] = None, end_date: Optional[str] = None) -> str:
@@ -217,6 +224,7 @@ async def get_history_symbol(symbol: str, start_date: Optional[str] = None, end_
     return format_dataframe_response(res)
 
 
+@tool_registry("get_next_n_trading_dates")
 @mcp.tool()
 @audit_wrapper
 async def get_next_n_trading_dates(exchange: str, date: str, n: int = 1) -> str:
@@ -236,6 +244,7 @@ async def get_next_n_trading_dates(exchange: str, date: str, n: int = 1) -> str:
     return format_list_response(res)
 
 
+@tool_registry("get_previous_n_trading_dates")
 @mcp.tool()
 @audit_wrapper
 async def get_previous_n_trading_dates(exchange: str, date: str, n: int = 1) -> str:
@@ -255,6 +264,7 @@ async def get_previous_n_trading_dates(exchange: str, date: str, n: int = 1) -> 
     return format_list_response(res)
 
 
+@tool_registry("stk_get_index_constituents")
 @mcp.tool()
 @audit_wrapper
 async def stk_get_index_constituents(index: str, trade_date: Optional[str] = None) -> str:

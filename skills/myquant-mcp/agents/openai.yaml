@@ -1,0 +1,7 @@
+interface:
+  display_name: "MyQuant MCP"
+  short_description: "Connect to this repo MyQuant MCP server"
+  default_prompt: "Use $myquant-mcp to configure or troubleshoot this repository MyQuant MCP server."
+
+policy:
+  allow_implicit_invocation: true

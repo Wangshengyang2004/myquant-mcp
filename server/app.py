@@ -22,28 +22,16 @@ from server.api import (
 
 logger = logging.getLogger("server")
 
-# Try to import agent page routes (optional)
-try:
-    from server.agent_page import ROUTES as AGENT_ROUTES
-    AGENT_PAGE_ENABLED = True
-except ImportError:
-    AGENT_PAGE_ENABLED = False
-    AGENT_ROUTES = []
-
-
 @contextlib.asynccontextmanager
 async def lifespan(app: Starlette):
     """Lifespan context manager."""
-    # Agent page startup - load conversations from storage
-    if AGENT_PAGE_ENABLED:
-        try:
-            from server.agent_page import startup as agent_startup
-            await agent_startup()
-        except Exception as e:
-            logger.error(f"Agent page startup failed: {e}")
-
-    async with mcp.session_manager.run():
-        yield
+    try:
+        async with mcp.session_manager.run():
+            yield
+    except Exception as e:
+        # Suppress ClosedResourceError and similar errors during shutdown
+        # These occur when clients disconnect while the server is sending messages
+        logger.debug(f"Session cleanup error (suppressed): {type(e).__name__}: {e}")
 
 
 def create_app() -> Starlette:
@@ -70,11 +58,6 @@ def create_app() -> Starlette:
         Route("/api/v1/tools/{tool_name}", rest_api_tool_call, methods=["POST"]),
         Route("/api/v1/tools/{tool_name}/call", rest_api_tool_call_get, methods=["GET"]),
     ]
-
-    # Add agent page routes if available
-    if AGENT_PAGE_ENABLED:
-        for path, handler, methods in AGENT_ROUTES:
-            routes.append(Route(path, handler, methods=methods))
 
     # Create app
     app = Starlette(

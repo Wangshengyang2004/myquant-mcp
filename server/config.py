@@ -8,7 +8,7 @@ import time
 from pathlib import Path
 from dotenv import load_dotenv
 
-from server.log_config import audit_logger, console_logger
+from server.log_config import audit_logger, console_logger, RequestContext
 
 load_dotenv(override=True)
 
@@ -17,7 +17,7 @@ WEBUI_HTML_PATH = BASE_DIR / "server" / "webui.html"
 
 # Authentication
 REQUIRE_AUTH_TOKEN = os.getenv("REQUIRE_AUTH_TOKEN", "true").lower() == "true"
-AUTH_TOKEN = os.getenv("MCP_AUTH_TOKEN", "admin")
+AUTH_TOKEN = os.getenv("MCP_AUTH_TOKEN", "").strip()
 GM_TOKEN = os.getenv("GM_TOKEN", "")
 
 # GM API
@@ -28,6 +28,9 @@ def validate_auth(auth_token: str) -> bool:
     """Validate authentication token"""
     if not REQUIRE_AUTH_TOKEN:
         return True
+    if not AUTH_TOKEN:
+        console_logger.warning("Protected tool access denied because MCP_AUTH_TOKEN is not configured")
+        return False
     return auth_token == AUTH_TOKEN
 
 
@@ -65,42 +68,19 @@ SEC_TYPE_OPTION = 1050
 SEC_TYPE_INDEX = 1060
 SEC_TYPE_SECTOR = 1070
 
-# Claude Agent System Prompt
-CLAUDE_AGENT_SYSTEM_PROMPT = """You are a helpful quantitative trading and financial analysis assistant with access to:
+SLOW_THRESHOLD_MS = float(os.getenv("SLOW_THRESHOLD_MS", "100"))
 
-**MyQuant Tools** (Chinese Stock Market):
-- history/history_n: Historical OHLCV data
-- current: Real-time market snapshot
-- get_symbols: List stocks/funds/indices
-- stk_get_daily_valuation: PE/PB/PS valuation metrics
-  - fields: 'pe_ttm,pe_mrq,pe_lyr,pb_lyr,pb_mrq,ps_ttm,ps_lyr'
-- stk_get_daily_basic: Price, turnover, shares data
-  - fields: 'tclose,turnrate,ttl_shr,circ_shr'
-- stk_get_fundamentals_balance: Balance sheet (assets, liabilities, equity)
-  - fields: 'mny_cptl,ttl_ast,ttl_liab,ttl_eqy_pcom,ttl_eqy'
-- stk_get_fundamentals_income: Income statement (revenue, profit)
-  - fields: 'ttl_inc_oper,inc_oper,net_prof,net_prof_pcom'
-- stk_get_money_flow: Money flow analysis
-- get_positions: Current trading positions
-- get_cash: Account cash balance
 
-**IMPORTANT - Field Names**: Use exact field names as shown above. Common errors:
-- Use 'pb_lyr' NOT 'pb'
-- Use 'tclose,turnrate,ttl_shr,circ_shr' NOT 'turnover_ratio,volume_ratio,total_share,float_share,total_mv,circ_mv'
-- Use 'ttl_ast' NOT 'total_assets'
-- Use 'ttl_inc_oper,net_prof' NOT 'total_revenue'
-
-**Chrome DevTools** (Browser Automation):
-- Navigate to websites, take screenshots, extract content
-
-You can help users analyze stocks, get market data, evaluate fundamentals, and scrape financial websites."""
-
-# Chrome DevTools MCP Server Configuration
-CHROME_DEVTOOLS_MCP_CONFIG = {
-    "type": "stdio",
-    "command": "npx",
-    "args": ["-y", "chrome-devtools-mcp@latest"]
-}
+def _result_summary(result) -> str:
+    if result is None:
+        return "None"
+    s = str(result).strip()
+    if not s or s == "No data available":
+        return "empty"
+    lines = s.splitlines()
+    if len(lines) > 1:
+        return f"{len(lines) - 1} rows"
+    return s[:20].replace("\n", " ")
 
 
 def audit_wrapper(func):
@@ -111,10 +91,8 @@ def audit_wrapper(func):
         start_time = time.time()
         tool_name = func.__name__
         
-        # Log tool call start to console
         arg_preview = ", ".join(f"{k}={repr(v)[:50]}" for k, v in list(kwargs.items())[:3] if k != "auth_token")
-        console_logger.info(f"TOOL CALL: {tool_name}({arg_preview})")
-        
+
         try:
             arguments = kwargs.copy()
             log_args = {k: v for k, v in arguments.items() if k != "auth_token"}
@@ -124,9 +102,12 @@ def audit_wrapper(func):
             result = await func(*args, **kwargs)
             duration_ms = (time.time() - start_time) * 1000
             audit_logger.log_tool_call(tool_name, log_args, "success", duration_ms=duration_ms)
-            
-            # Log success to console
-            console_logger.info(f"TOOL DONE: {tool_name} [{duration_ms:.1f}ms]")
+
+            ctx = RequestContext.get()
+            req_id = ctx.get("request_id", "-")
+            slow_tag = " SLOW" if duration_ms > SLOW_THRESHOLD_MS else ""
+            summary = _result_summary(result)
+            console_logger.info(f"[{req_id}] TOOL: {tool_name}({arg_preview}) → {duration_ms:.1f}ms{slow_tag} OK ({summary})")
             return result
         except Exception as e:
             duration_ms = (time.time() - start_time) * 1000
@@ -134,8 +115,9 @@ def audit_wrapper(func):
             if "auth_token" in kwargs:
                 log_args["auth_token"] = "***"
             audit_logger.log_tool_call(tool_name, log_args, "error", error=str(e), duration_ms=duration_ms)
-            
-            # Log error to console
-            console_logger.error(f"TOOL ERROR: {tool_name} - {e}")
+
+            ctx = RequestContext.get()
+            req_id = ctx.get("request_id", "-")
+            console_logger.error(f"[{req_id}] TOOL: {tool_name}({arg_preview}) → {duration_ms:.1f}ms ERR: {e}")
             raise
     return wrapper

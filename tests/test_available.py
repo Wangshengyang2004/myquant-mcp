@@ -1,3 +1,9 @@
+import os
+import pytest
+
+if os.getenv("RUN_INTEGRATION_TESTS") != "1":
+    pytest.skip("Integration test requires a live GM/MyQuant environment", allow_module_level=True)
+
 from common import init_gm, safe_run
 from gm.api import (
     get_symbol_infos, 
@@ -25,4 +31,3 @@ def test_available():
 
 if __name__ == "__main__":
     test_available()
-
