@@ -5,7 +5,7 @@
 ## 两种使用方式
 
 1. 直接把这个服务的 HTTP MCP endpoint 接到客户端。
-2. 使用仓库内置 skill，通过 `skills/myquant-mcp/scripts/client.py` 访问只读 REST 数据接口。
+2. 使用仓库内置 skill，通过 `skills/myquant-mcp/scripts/client.py` 访问 HTTP 工具接口。
 
 ## 系统要求
 
@@ -173,12 +173,14 @@ OpenClaw 读取到的 MCP 配置同样应该指向 HTTP endpoint，而不是 `se
 - [skills/myquant-mcp/SKILL.md](C:\Users\simonwsy\Desktop\Workspace\myquant-mcp\skills\myquant-mcp\SKILL.md)
 - [skills/myquant-mcp/scripts/client.py](C:\Users\simonwsy\Desktop\Workspace\myquant-mcp\skills\myquant-mcp\scripts\client.py)
 
-这个 skill 走的是只读 REST 接口，适合行情和基本面查询，不适合账户和交易操作。
+这个 skill 走的是 HTTP REST 接口，可以访问与 MCP 一致的工具集合。
 
 这样设计是出于安全考虑：
 
 - 交易 API 暴露给通用 skill 或通用 HTTP 客户端会更脆弱，风险更高
-- 因此 skill 方式只提供数据 API，不提供交易能力
+- 因此 skill 不会隐式读取仓库里的 `.env` 或自动带出 token
+- 受保护的账户、交易和 `stock_do_t` 工具必须显式通过命令行传入 `--auth-token`
+- 这个 `--auth-token` 应与服务端的 `MCP_AUTH_TOKEN` 保持一致
 
 示例：
 
@@ -186,13 +188,18 @@ OpenClaw 读取到的 MCP 配置同样应该指向 HTTP endpoint，而不是 `se
 python skills/myquant-mcp/scripts/client.py --list-tools
 python skills/myquant-mcp/scripts/client.py --info history
 python skills/myquant-mcp/scripts/client.py history --symbol SHSE.600000 --frequency 1d --start-time 2024-01-01 --end-time 2024-12-31
+python skills/myquant-mcp/scripts/client.py --auth-token YOUR_TOKEN get_positions
+python skills/myquant-mcp/scripts/client.py --auth-token YOUR_TOKEN order_volume --symbol SZSE.000001 --volume 100 --side 1 --price 10.50
 ```
 
 ## 重要说明
 
 - `TRADING_ENABLED=false` 应保持默认值，除非你明确需要真实交易。
 - 账户和交易工具需要 `MCP_AUTH_TOKEN`。
-- `skills/myquant-mcp/scripts/client.py` 只调用 REST API，因此不能访问账户和交易工具。
+- `skills/myquant-mcp/scripts/client.py` 通过 REST API 调用与 MCP 一致的工具集。
+- 当 skill 被安装到别的 agent 工作区时，不要假设它能读到本仓库 `.env`；请直接在命令行传 `--auth-token`。
+- `stock_do_t` 的运行状态会持久化到本地 SQLite 文件 [`.local/do_t_state.sqlite3`](C:\Users\simonwsy\Desktop\Workspace\myquant-mcp\.local\do_t_state.sqlite3)，服务重启后仍可查询。
+- `stock_do_t` 在 `14:55` 后不再开新仓；如果第一腿已经完成但第二腿还没触发，会进入强制结算流程。
 
 ## 项目结构
 

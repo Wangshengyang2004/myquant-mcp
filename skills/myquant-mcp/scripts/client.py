@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """
-MyQuant Data API Client
+MyQuant HTTP API Client
 
-A self-contained client for connecting to MyQuant MCP HTTP API.
-This client provides access to market and fundamental data tools only.
-Trading and account operations are NOT exposed for security reasons.
+A self-contained client for connecting to the MyQuant HTTP API.
+It can call every tool exposed by the server. Protected account and trading
+operations use the same auth_token gate as MCP and should be passed explicitly
+on the command line.
 
 Usage:
     python skills/myquant-mcp/scripts/client.py --help
@@ -485,18 +486,6 @@ DATA_TOOLS = {
     },
 }
 
-# Blocked tools (trading and account operations - NOT exposed for security)
-# These tools are blocked at the server side. They are listed here for documentation
-# purposes only - the client will never be able to access them.
-# BLOCKED_TOOLS = [
-#     "order_volume", "order_value", "order_target_volume",
-#     "order_cancel", "order_cancel_all", "order_close_all",
-#     "order_percent", "order_target_value", "order_target_percent",
-#     "order_batch", "get_unfinished_orders",
-#     "get_positions", "get_orders", "get_cash", "get_execution_reports",
-# ]
-
-
 # =============================================================================
 # API Client
 # =============================================================================
@@ -587,6 +576,53 @@ class MyQuantClient:
         self.session.close()
 
 
+def _server_tool_from_response(payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Extract the tool object from a REST tool-info response."""
+    tool = payload.get("tool")
+    return tool if isinstance(tool, dict) else None
+
+
+def _tool_requires_auth(tool: Optional[Dict[str, Any]]) -> bool:
+    """Check whether a tool schema requires auth_token."""
+    if not tool:
+        return False
+    schema = tool.get("inputSchema", {}) or {}
+    properties = schema.get("properties", {}) or {}
+    required = schema.get("required", []) or []
+    return "auth_token" in properties or "auth_token" in required
+
+
+def _mask_sensitive_params(params: Dict[str, Any]) -> Dict[str, Any]:
+    """Hide auth_token in CLI logging."""
+    masked = dict(params)
+    if "auth_token" in masked:
+        masked["auth_token"] = "***"
+    return masked
+
+
+def _print_server_tool_info(tool: Dict[str, Any]) -> None:
+    """Print tool details using live schema returned by the server."""
+    schema = tool.get("inputSchema", {}) or {}
+    properties = schema.get("properties", {}) or {}
+    required = schema.get("required", []) or []
+
+    print(f"\n{'='*60}")
+    print(f"Tool: {tool.get('name', 'unknown')}")
+    print(f"{'='*60}")
+    print(f"\nDescription:\n  {tool.get('description', 'No description')}")
+    print("\nParameters:")
+    if properties:
+        for param, info in properties.items():
+            req_marker = "*" if param in required else " "
+            type_name = info.get("type", "any")
+            default = f", default={info['default']}" if "default" in info else ""
+            print(f"  {req_marker} {param}: type={type_name}{default}")
+    else:
+        print("  None")
+    print(f"\nRequired parameters: {', '.join(required) if required else 'None'}")
+    print()
+
+
 # =============================================================================
 # CLI Interface
 # =============================================================================
@@ -627,11 +663,21 @@ def save_result(data: Any, tool_name: str, download_dir: str, format: str = "jso
         print(f"Saved to: {filepath}")
 
 
-def print_tool_info(tool_name: str):
+def print_tool_info(tool_name: str, client: Optional[MyQuantClient] = None):
     """Print detailed information about a tool."""
+    if client is not None:
+        try:
+            payload = client.get_tool_info(tool_name)
+            tool = _server_tool_from_response(payload)
+            if payload.get("success") and tool:
+                _print_server_tool_info(tool)
+                return
+        except requests.RequestException as exc:
+            print(f"Warning: failed to fetch live tool info, falling back to local docs: {exc}")
+
     if tool_name not in DATA_TOOLS:
         print(f"Error: Unknown tool '{tool_name}'")
-        print(f"Available tools: {', '.join(sorted(DATA_TOOLS.keys()))}")
+        print("Tip: run --list-tools against a live server to inspect the full tool set.")
         return
 
     tool = DATA_TOOLS[tool_name]
@@ -639,7 +685,7 @@ def print_tool_info(tool_name: str):
     print(f"Tool: {tool_name}")
     print(f"{'='*60}")
     print(f"\nDescription:\n  {tool['description']}")
-    print(f"\nParameters:")
+    print("\nParameters:")
     for param, desc in tool["params"].items():
         req_marker = "*" if param in tool["required"] else " "
         print(f"  {req_marker} {param}: {desc}")
@@ -648,13 +694,41 @@ def print_tool_info(tool_name: str):
     print()
 
 
-def list_all_tools():
+def list_all_tools(client: Optional[MyQuantClient] = None):
     """List all available tools."""
+    if client is not None:
+        try:
+            payload = client.list_tools()
+            tools = payload.get("tools", []) if payload.get("success") else []
+            if tools:
+                public_tools = sorted((t for t in tools if not _tool_requires_auth(t)), key=lambda item: item["name"])
+                protected_tools = sorted((t for t in tools if _tool_requires_auth(t)), key=lambda item: item["name"])
+
+                print("\n" + "="*60)
+                print("MyQuant HTTP API - Available Tools")
+                print("="*60)
+
+                print("\n[Public Tools]")
+                for tool in public_tools:
+                    print(f"  {tool['name']:<35} - {tool.get('description', '')}")
+
+                if protected_tools:
+                    print("\n[Protected Tools]")
+                    for tool in protected_tools:
+                        print(f"  {tool['name']:<35} - {tool.get('description', '')}")
+                    print("\nProtected tools require --auth-token <MCP_AUTH_TOKEN>.")
+
+                print(f"\nTotal: {len(tools)} tools available")
+                print("\nUse: python skills/myquant-mcp/scripts/client.py --info <tool_name> for details")
+                print()
+                return
+        except requests.RequestException as exc:
+            print(f"Warning: failed to fetch live tool list, falling back to built-in data catalog: {exc}")
+
     print("\n" + "="*60)
-    print("MyQuant Data API - Available Tools")
+    print("MyQuant HTTP API - Built-in Data Tool Catalog")
     print("="*60)
 
-    # Group by category
     market_tools = ["history", "history_n", "current", "current_price", "last_tick",
                     "get_symbols", "get_symbol_infos", "get_trading_dates_by_year",
                     "get_history_symbol", "get_next_n_trading_dates",
@@ -672,15 +746,15 @@ def list_all_tools():
             desc = DATA_TOOLS[name]["description"].split("，")[0]
             print(f"  {name:<35} - {desc}")
 
-    print(f"\nTotal: {len(DATA_TOOLS)} data tools available")
-    print("\nUse: python skills/myquant-mcp/scripts/client.py <tool_name> --help for detailed usage")
+    print(f"\nTotal: {len(DATA_TOOLS)} built-in data tools documented")
+    print("\nTip: connect to a live server to inspect protected trading/account tools as well.")
     print()
 
 
 def main():
     """Main entry point."""
     parser = argparse.ArgumentParser(
-        description="MyQuant Data API Client - Access market and fundamental data",
+        description="MyQuant HTTP API Client - Access public and protected tools",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
@@ -692,6 +766,12 @@ Examples:
 
   Call a tool:
     python skills/myquant-mcp/scripts/client.py history --symbol SHSE.600000 --frequency 1d --start-time 2024-01-01 --end-time 2024-12-31
+
+  Call a protected account tool:
+    python skills/myquant-mcp/scripts/client.py --auth-token YOUR_TOKEN get_positions
+
+  Call a protected trading tool:
+    python skills/myquant-mcp/scripts/client.py --auth-token YOUR_TOKEN order_volume --symbol SZSE.000001 --volume 100 --side 1 --price 10.50
 
   Save result to file:
     python skills/myquant-mcp/scripts/client.py history --symbol SHSE.600000 --frequency 1d --start-time 2024-01-01 --end-time 2024-12-31 --download-dir ./data
@@ -747,6 +827,10 @@ Examples:
         action="store_true",
         help="Print full output (not truncated)",
     )
+    parser.add_argument(
+        "--auth-token",
+        help="Auth token for protected tools. Pass the same value as MCP_AUTH_TOKEN.",
+    )
 
     # Tool name as positional argument
     parser.add_argument(
@@ -764,25 +848,29 @@ Examples:
 
     args = parser.parse_args()
 
+    client = MyQuantClient(base_url=args.url, timeout=args.timeout) if (args.list_tools or args.info or args.tool_name) else None
+
     # Handle list tools
     if args.list_tools:
-        list_all_tools()
+        try:
+            list_all_tools(client)
+        finally:
+            if client is not None:
+                client.close()
         return
 
     # Handle tool info
     if args.info:
-        print_tool_info(args.info)
+        try:
+            print_tool_info(args.info, client)
+        finally:
+            if client is not None:
+                client.close()
         return
 
     # Handle tool call
     if args.tool_name:
         tool_name = args.tool_name
-
-        # Check if known tool
-        if tool_name not in DATA_TOOLS:
-            print(f"Warning: Tool '{tool_name}' is not in the known data tools list.")
-            print(f"Known tools: {', '.join(sorted(DATA_TOOLS.keys())[:10])}...")
-            print("Proceeding anyway...\n")
 
         # Parse tool arguments
         tool_params = {}
@@ -816,12 +904,30 @@ Examples:
             else:
                 i += 1
 
-        # Create client and call tool
-        client = MyQuantClient(base_url=args.url, timeout=args.timeout)
-
         try:
+            live_tool = None
+            try:
+                payload = client.get_tool_info(tool_name)
+                live_tool = _server_tool_from_response(payload)
+            except requests.RequestException:
+                live_tool = None
+
+            if live_tool is None and tool_name not in DATA_TOOLS:
+                print(f"Warning: Tool '{tool_name}' is not in the built-in data catalog.")
+                print("Proceeding with the live server call anyway...\n")
+
+            if args.auth_token and "auth_token" not in tool_params and _tool_requires_auth(live_tool):
+                tool_params["auth_token"] = args.auth_token
+
+            if _tool_requires_auth(live_tool) and "auth_token" not in tool_params:
+                print(
+                    "Error: this tool requires auth_token. Pass --auth-token <MCP_AUTH_TOKEN> "
+                    "before the tool name, or provide --auth-token after the tool name as a tool argument."
+                )
+                return
+
             print(f"Calling tool: {tool_name}")
-            print(f"Parameters: {json.dumps(tool_params, ensure_ascii=False)}")
+            print(f"Parameters: {json.dumps(_mask_sensitive_params(tool_params), ensure_ascii=False)}")
 
             if args.get:
                 result = client.call_tool_get(tool_name, **tool_params)
@@ -860,7 +966,8 @@ Examples:
         except Exception as e:
             print(f"\nError: {e}")
         finally:
-            client.close()
+            if client is not None:
+                client.close()
     else:
         parser.print_help()
 

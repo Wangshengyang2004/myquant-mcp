@@ -5,18 +5,26 @@ import types
 
 def _build_dummy_gm_api():
     module = types.ModuleType("gm.api")
+    constants = {
+        "OrderType_Limit": 1,
+        "PositionEffect_Open": 2,
+        "PositionEffect_Close": 3,
+        "PositionSide_Long": 4,
+        "OrderSide_Buy": 5,
+        "OrderSide_Sell": 6,
+        "OrderStatus_PartiallyFilled": 7,
+        "OrderStatus_Filled": 8,
+        "OrderStatus_Canceled": 9,
+        "OrderStatus_Expired": 10,
+        "OrderStatus_Rejected": 11,
+    }
 
     def _dummy_function(*args, **kwargs):
         return []
 
     def _dummy_getattr(name):
-        if name in {
-            "OrderType_Limit",
-            "PositionEffect_Open",
-            "PositionEffect_Close",
-            "PositionSide_Long",
-        }:
-            return 0
+        if name in constants:
+            return constants[name]
         return _dummy_function
 
     module.__getattr__ = _dummy_getattr

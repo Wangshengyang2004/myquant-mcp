@@ -43,6 +43,7 @@ def test_rest_tools_list_filters_blocked(monkeypatch):
         "_build_registered_tools",
         lambda: [{"name": "history"}, {"name": "get_positions"}, {"name": "order_volume"}],
     )
+    monkeypatch.setattr(rest_module, "BLOCKED_TOOLS_HTTP", {"get_positions", "order_volume"})
 
     response = asyncio.run(rest_module.rest_api_tools_list(make_request()))
     body = parse_response(response)
@@ -54,6 +55,7 @@ def test_rest_tools_list_filters_blocked(monkeypatch):
 
 def test_rest_tool_info_blocked_and_missing(monkeypatch):
     monkeypatch.setattr(rest_module, "_tool_functions", {"history": object()})
+    monkeypatch.setattr(rest_module, "BLOCKED_TOOLS_HTTP", {"get_positions"})
 
     blocked = asyncio.run(
         rest_module.rest_api_tool_info(make_request(path="/api/v1/tools/get_positions", path_params={"tool_name": "get_positions"}))
@@ -65,6 +67,22 @@ def test_rest_tool_info_blocked_and_missing(monkeypatch):
     assert blocked.status_code == 403
     assert parse_response(blocked)["success"] is False
     assert missing.status_code == 404
+
+
+def test_rest_tools_list_exposes_protected_tools_by_default(monkeypatch):
+    monkeypatch.setattr(
+        rest_module,
+        "_build_registered_tools",
+        lambda: [{"name": "history"}, {"name": "get_positions"}, {"name": "order_volume"}],
+    )
+    monkeypatch.setattr(rest_module, "BLOCKED_TOOLS_HTTP", set())
+
+    response = asyncio.run(rest_module.rest_api_tools_list(make_request()))
+    body = parse_response(response)
+
+    assert body["success"] is True
+    assert body["count"] == 3
+    assert body["tools"] == [{"name": "history"}, {"name": "get_positions"}, {"name": "order_volume"}]
 
 
 def test_rest_tool_info_success(monkeypatch):
@@ -82,6 +100,26 @@ def test_rest_tool_info_success(monkeypatch):
 
     assert body["success"] is True
     assert body["tool"]["name"] == "history"
+
+
+def test_rest_tool_info_exposes_protected_tool_when_not_blocked(monkeypatch):
+    monkeypatch.setattr(rest_module, "_tool_functions", {"get_positions": object()})
+    monkeypatch.setattr(
+        rest_module,
+        "_build_registered_tools",
+        lambda: [{"name": "get_positions", "description": "desc", "inputSchema": {"type": "object"}}],
+    )
+    monkeypatch.setattr(rest_module, "BLOCKED_TOOLS_HTTP", set())
+
+    response = asyncio.run(
+        rest_module.rest_api_tool_info(
+            make_request(path="/api/v1/tools/get_positions", path_params={"tool_name": "get_positions"})
+        )
+    )
+    body = parse_response(response)
+
+    assert body["success"] is True
+    assert body["tool"]["name"] == "get_positions"
 
 
 def test_rest_tool_call_parses_json_result(monkeypatch):

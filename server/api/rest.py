@@ -9,28 +9,9 @@ from server.tools import _tool_functions
 from server.api.direct_call import _build_registered_tools, _build_tool_schema
 
 
-# Blocked tools for HTTP API (trading and account operations)
-# These tools are blocked at the HTTP API level for security reasons.
-# Only MCP endpoint has access to these tools.
-BLOCKED_TOOLS_HTTP = {
-    # Trading tools
-    "order_volume",
-    "order_value",
-    "order_target_volume",
-    "order_cancel",
-    "order_cancel_all",
-    "order_close_all",
-    "order_percent",
-    "order_target_value",
-    "order_target_percent",
-    "order_batch",
-    "get_unfinished_orders",
-    # Account tools
-    "get_positions",
-    "get_orders",
-    "get_cash",
-    "get_execution_reports",
-}
+# HTTP and MCP now expose the same tool set. Protected tools are gated by the
+# tool-level auth_token check instead of an additional HTTP-only blocklist.
+BLOCKED_TOOLS_HTTP = set()
 
 
 async def rest_api_tools_list(request: Request) -> JSONResponse:
@@ -39,7 +20,8 @@ async def rest_api_tools_list(request: Request) -> JSONResponse:
     GET /api/v1/tools
     Returns: {"success": true, "count": N, "tools": [...]}
 
-    Note: Trading and account tools are NOT listed (blocked for HTTP API).
+    Note: Protected tools are listed as well. Callers must provide auth_token
+    for tools that require it.
     """
     try:
         tools = _build_registered_tools()

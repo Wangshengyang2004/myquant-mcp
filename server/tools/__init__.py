@@ -24,6 +24,7 @@ def tool_registry(name: str):
 from server.tools.market import *  # noqa: F401, F403
 from server.tools.fundamental import *  # noqa: F401, F403
 from server.tools.trading import *  # noqa: F401, F403
+from server.tools.do_t import *  # noqa: F401, F403
 from server.tools.execution import *  # noqa: F401, F403
 
 __all__ = ["_tool_functions", "tool_registry"]
