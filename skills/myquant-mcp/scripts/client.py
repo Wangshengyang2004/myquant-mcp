@@ -46,7 +46,9 @@ DEFAULT_TIMEOUT = 60
 
 
 # =============================================================================
-# Tool Definitions (matching MCP server tools)
+# Offline catalog: market + fundamental tools only (43). Matches server
+# registration for those modules; account / trading / stock_do_t* are not
+# listed here—use live --list-tools / --info when the server is up.
 # =============================================================================
 
 DATA_TOOLS = {
