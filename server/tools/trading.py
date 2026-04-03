@@ -28,6 +28,30 @@ from gm.api import (
 )
 
 
+def _normalize_gm_batch_orders(orders: list) -> list:
+    """为每条批量委托补全与 order_volume 一致的默认字段，避免柜台因缺 position_effect / order_type 拒单。"""
+    normalized = []
+    for raw in orders:
+        if not isinstance(raw, dict):
+            normalized.append(raw)
+            continue
+        item = dict(raw)
+        side = item.get("side")
+        if side is not None:
+            try:
+                side_int = int(side)
+            except (TypeError, ValueError):
+                side_int = None
+            if side_int in (1, 2) and "position_effect" not in item:
+                item["position_effect"] = (
+                    PositionEffect_Open if side_int == 1 else PositionEffect_Close
+                )
+        if "order_type" not in item:
+            item["order_type"] = OrderType_Limit
+        normalized.append(item)
+    return normalized
+
+
 # Trading tools (require authentication)
 @mcp.tool()
 @audit_wrapper
@@ -40,7 +64,8 @@ async def order_volume(auth_token: str, symbol: str, volume: int, side: int, pri
     - symbol: 标的代码 (如 "SZSE.002236")
     - volume: 委托数量（股数）
     - side: 委托方向 (1=买入, 2=卖出)
-    - price: 委托价格（可选）
+    - price: 委托价格。本工具固定使用 GM 限价单（OrderType_Limit）；若省略，会向底层传 price=0。
+      A 股多数模拟/实盘柜台对限价单要求有效价格，省略时常报「委托价格不可以为0」。实盘/模拟盘建议始终传入挂单价。
 
     示例:
     - order_volume(auth_token="admin", symbol="SZSE.002236", volume=100, side=1, price=10.5)
@@ -74,13 +99,14 @@ async def order_value(auth_token: str, symbol: str, value: float, side: int, pri
     - symbol: 标的代码 (如 "SZSE.002236")
     - value: 委托金额（元）
     - side: 委托方向 (1=买入, 2=卖出)
-    - price: 委托价格（可选）
+    - price: 用于把金额折算为股数的限价。本工具固定为限价单；若省略则传 price=0，与「按金额自动用市价/最新价」的常见框架语义不同，
+      A 股柜台通常会直接拒绝。按金额下单时务必传入与折算一致的有效限价（或改用自算股数 + order_volume）。
 
     示例:
     - order_value(auth_token="admin", symbol="SZSE.002236", value=10000, side=1, price=10.5)
     - order_value(auth_token="admin", symbol="SZSE.002236", value=10000, side=2, price=11.0)
 
-    注意: 系统根据 value/price 计算数量，最小单位100股
+    注意: 系统根据 value/price 计算数量，最小单位 100 股（以柜台规则为准）。
     """
     if not validate_auth(auth_token):
         raise ValueError("Error: Invalid authentication token")
@@ -200,7 +226,7 @@ async def order_percent(auth_token: str, symbol: str, percent: float, side: int,
     - symbol: 标的代码
     - percent: 委托数量占总资产的比例（0-100）
     - side: 委托方向，1=买入，2=卖出
-    - price: 委托价格（限价单必须），默认 None
+    - price: 限价单委托价。省略时传 price=0；A 股限价场景下柜台通常要求非零价格，建议显式传入。
     """
     if not validate_auth(auth_token):
         raise ValueError("Error: Invalid authentication token")
@@ -290,20 +316,24 @@ async def order_batch(auth_token: str, orders: list) -> str:
 
     参数:
     - auth_token: 认证令牌
-    - orders: 委托列表，每项包含:
+    - orders: 委托列表，每项为 dict。字段以 GM 柜台要求为准；常见包括:
         - symbol: 标的代码
         - volume: 委托数量（按数量委托时必填）
         - value: 委托金额（按金额委托时必填）
         - side: 委托方向，1=买入，2=卖出
-        - price: 委托价格（可选）
-        - order_type: 委托类型（可选）
+        - price: 限价单价格（A 股限价场景下通常必填，否则易与单笔接口同样被拒）
+        - order_type: 委托类型；若省略，服务端会默认补为限价单（与 order_volume 一致）
+        - position_effect: 开平标志；若省略，服务端会按 side 补全（1→开仓，2→平仓），与单笔封装一致
+
+    说明: GM 的 order_batch 不会自动填充与 order_volume 相同的默认值；本工具在调用前会为缺省项补上 order_type、position_effect，
+    但若柜台仍要求其它字段或合法 price，需调用方在每条 order 中写全。
     """
     if not validate_auth(auth_token):
         raise ValueError("Error: Invalid authentication token")
     # Set account context before placing orders
     gm_set_account_id(DEFAULT_ACCOUNT_ID)
     # Pass orders as positional argument (GM API doesn't accept keyword argument 'orders')
-    res = gm_order_batch(orders)
+    res = gm_order_batch(_normalize_gm_batch_orders(orders))
     return format_list_response(res) if isinstance(res, list) else json.dumps(res, indent=2, default=str)
 
 
